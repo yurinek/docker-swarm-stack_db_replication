@@ -5,7 +5,7 @@ It will create swarm stack services for one master and two slaves databases and 
 
 ## How to install
 
-Copy the contents of this repo to your target host
+Pull the contents of this repo to your target host
 
 ## How to run
 
