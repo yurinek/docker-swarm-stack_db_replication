@@ -16,7 +16,6 @@ cd docker-swarm-stack_db_replication
 # images yurinek/postgres_master and yurinek/postgres_slave have at the moment only pg version 12 preinstalled. 
 # to change version a new image with new tag needs to be build and uploaded to registry
 # var ENV_PG_VERSION_PULL is needed here anyway to pull a given version from registry
-
 export ENV_PG_VERSION_PULL=12
 export ENV_PG_DB=mydb
 export ENV_PG_PORT=5432
@@ -33,6 +32,7 @@ export ENV_APP_NAME=myapp
 # create a secret for database password
 echo "mysecret" | docker secret create pg_password -
 
+# create node labels to make sure each docker service is created on separate host
 docker node update --label-add master_db_host=true your-docker-host1
 docker node update --label-add slave1_db_host=true your-docker-host2
 docker node update --label-add slave2_db_host=true your-docker-host3
