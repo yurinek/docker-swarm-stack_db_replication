@@ -1,0 +1,122 @@
+# docker-compose.yml version (name in secrets needs 3.5)
+version: '3.5'
+
+services:
+  master:
+    image: yurinek/postgres_master:${ENV_PG_VERSION_PULL}
+    # we expose ports only for db connections from host, its not needed for replication
+    ports:
+      - "$ENV_MASTER_HOST_PORT:$ENV_PG_PORT"
+    deploy:
+      # containers shouldnt be replicated because for dbs we need db replication
+      replicas: 1
+      # we make sure each member is created on different node
+      placement:
+        constraints:
+          - "node.labels.master_db_host == true"
+    secrets:
+      # reference by the key name of the secret key
+      - pg_password 
+    environment:
+      # yurinek/postgres_master image expects those vars for replicate.sh execution
+      RUNTIME_ENV_PG_PORT: $ENV_PG_PORT
+      RUNTIME_ENV_PG_DB: $ENV_PG_DB
+      # official source postgres image expects a var named POSTGRES_PASSWORD or POSTGRES_PASSWORD_FILE
+      # reference by the key name of the secret key
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    volumes:
+      - master_vol:/data/postgresql/$ENV_PG_VERSION_PULL/$ENV_PG_CLUSTER_NAME
+    networks: 
+      - net
+    tty: true
+
+
+  slave1:
+    image: yurinek/postgres_slave:${ENV_PG_VERSION_PULL}
+    # we expose ports only for db connections from host, its not needed for replication
+    ports:
+      - "$ENV_SLAVE1_HOST_PORT:$ENV_PG_PORT"
+    deploy:
+      # containers shouldnt be replicated because for dbs we need db replication
+      replicas: 1
+      # we make sure each member is created on different node
+      placement:
+        constraints:
+          - "node.labels.slave1_db_host == true"
+    secrets:
+      # reference by the key name of the secret key
+      - pg_password
+    environment:
+      # yurinek/postgres_master image expects those vars for replicate.sh execution
+      RUNTIME_ENV_PG_PORT: $ENV_PG_PORT
+      RUNTIME_ENV_PG_DB: $ENV_PG_DB
+      # lets keep master host name in a variable way
+      RUNTIME_ENV_MASTER_HOST: ${ENV_APP_NAME}_master
+      # official source postgres image expects a var named POSTGRES_PASSWORD or POSTGRES_PASSWORD_FILE
+      # reference by the key name of the secret key
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    volumes:
+      - slave1_vol:/data/postgresql/$ENV_PG_VERSION_PULL/$ENV_PG_CLUSTER_NAME
+    networks: 
+      - net
+    tty: true
+
+
+  slave2:
+    image: yurinek/postgres_slave:${ENV_PG_VERSION_PULL}
+    # we expose ports only for db connections from host, its not needed for replication
+    ports:
+      - "$ENV_SLAVE2_HOST_PORT:$ENV_PG_PORT"
+    deploy:
+      # containers shouldnt be replicated because for dbs we need db replication
+      replicas: 1
+      # we make sure each member is created on different node
+      placement:
+        constraints:
+          - "node.labels.slave2_db_host == true"
+    secrets:
+      # reference by the key name of the secret key
+      - pg_password
+    environment:
+      # yurinek/postgres_master image expects those vars for replicate.sh execution
+      RUNTIME_ENV_PG_PORT: $ENV_PG_PORT
+      RUNTIME_ENV_PG_DB: $ENV_PG_DB
+      # lets keep master host name in a variable way
+      RUNTIME_ENV_MASTER_HOST: ${ENV_APP_NAME}_master
+      # official source postgres image expects a var named POSTGRES_PASSWORD or POSTGRES_PASSWORD_FILE
+      # reference by the key name of the secret key
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    volumes:
+      - slave2_vol:/data/postgresql/$ENV_PG_VERSION_PULL/$ENV_PG_CLUSTER_NAME
+    networks: 
+      - net
+    tty: true
+    # In the docker-compose mode, docker tries to start all the container in detached mode by default. If there is no process running inside the container within certain duration, docker thinks the container has finished its work and exits it. If this is not a foreground but a background process, docker thinks the foreground process has finished and exits the container. Docker-compose does not support –t as a command line parameter but docker-compose.yml provides "tty: true".
+ 
+# volume, network names are inherited and prepended from project name
+  
+volumes:
+    master_vol:
+    slave1_vol:
+    slave2_vol:
+
+networks: 
+    net:
+
+secrets:
+    # key name
+    pg_password:
+      # inside container secret name is pg_password, but in "docker secret ls" it is ${ENV_APP_NAME}_pg_password, which is useful for multiple stacks deployments
+      name: ${ENV_APP_NAME}_pg_password
+      # for external to work, following needs to be executed before: echo "mysecret" | docker secret create pg_password -
+      external: true
+
+# whats happening:
+  # 1. intermidiate master container is created
+  # 2. master image is created from intermidiate container
+  # 3. intermidiate slave container is created
+  # 4. slave image is created from intermidiate container  
+  # 5. master container is created from image and keeps running with the help of tty: true
+  # 6. slave  container is created from image and keeps running with the help of tty: true   
+  # 7. replication script starts on slave container 
+# these steps can run simultaniously, therefore its important to implement wait logic e.g. slave container should wait for master to be up and ready
